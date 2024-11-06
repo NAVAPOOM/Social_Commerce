@@ -1,9 +1,9 @@
-import { TutorialStep } from "./tutorial-step";
+import Step from "./Step";
 
 export default function ConnectSupabaseSteps() {
   return (
     <ol className="flex flex-col gap-6">
-      <TutorialStep title="Create Supabase project">
+      <Step title="Create Supabase project">
         <p>
           Head over to{" "}
           <a
@@ -16,16 +16,16 @@ export default function ConnectSupabaseSteps() {
           </a>{" "}
           and create a new Supabase project.
         </p>
-      </TutorialStep>
+      </Step>
 
-      <TutorialStep title="Declare environment variables">
+      <Step title="Declare environment variables">
         <p>
           Rename the{" "}
-          <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
+          <span className="px-2 py-1 rounded-md bg-foreground/20 text-foreground/80">
             .env.example
           </span>{" "}
           file in your Next.js app to{" "}
-          <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
+          <span className="px-2 py-1 rounded-md bg-foreground/20 text-foreground/80">
             .env.local
           </span>{" "}
           and populate with values from{" "}
@@ -39,24 +39,24 @@ export default function ConnectSupabaseSteps() {
           </a>
           .
         </p>
-      </TutorialStep>
+      </Step>
 
-      <TutorialStep title="Restart your Next.js development server">
+      <Step title="Restart your Next.js development server">
         <p>
           You may need to quit your Next.js development server and run{" "}
-          <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
+          <span className="px-2 py-1 rounded-md bg-foreground/20 text-foreground/80">
             npm run dev
           </span>{" "}
           again to load the new environment variables.
         </p>
-      </TutorialStep>
+      </Step>
 
-      <TutorialStep title="Refresh the page">
+      <Step title="Refresh the page">
         <p>
           You may need to refresh the page for Next.js to load the new
           environment variables.
         </p>
-      </TutorialStep>
+      </Step>
     </ol>
   );
 }

@@ -5,52 +5,75 @@ import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-export const signUpAction = async (formData: FormData) => {
-  const email = formData.get("email")?.toString();
-  const password = formData.get("password")?.toString();
-  const supabase = await createClient();
-  const origin = (await headers()).get("origin");
-
-  if (!email || !password) {
-    return { error: "Email and password are required" };
-  }
-
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: `${origin}/auth/callback`,
-    },
-  });
-
-  if (error) {
-    console.error(error.code + " " + error.message);
-    return encodedRedirect("error", "/sign-up", error.message);
-  } else {
-    return encodedRedirect(
-      "success",
-      "/sign-up",
-      "Thanks for signing up! Please check your email for a verification link.",
-    );
-  }
-};
-
-export const signInAction = async (formData: FormData) => {
+export async function logIn(formData: FormData) {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.signInWithPassword({
+  console.log("Attempting login for email:", email);
+
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
+  console.log("Sign-in result:", { data, error });
+
   if (error) {
-    return encodedRedirect("error", "/sign-in", error.message);
+    console.error("Sign-in error:", error);
+    if (error.status === 400) {
+      return { error: "Invalid credentials. Please check your email and password." };
+    } else if (error.status === 500) {
+      return { error: "Server error. Please try again later." };
+    } else {
+      return { error: error.message };
+    }
   }
 
-  return redirect("/protected");
-};
+  if (!data.user) {
+    return { error: "No user data returned. Please try again." };
+  }
+
+  // Redirect to /home after successful login
+  return redirect("/home");
+}
+
+export async function signUp(formData: FormData) {
+  const origin = (await headers()).get("origin");
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+  const phone = formData.get("phone") as string;
+  const username = formData.get("username") as string;
+
+  if (!email || !password || !phone || !username) {
+    return { error: "All fields are required." };
+  }
+
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${origin}/auth/callback`, // URL สำหรับยืนยันอีเมล
+        data: {
+          display_name: username, 
+          phone: phone, 
+        },
+      },
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return { success: "Registration successful. Please check your email to confirm your account." };
+  } catch (e) {
+    console.error("Unexpected error during sign up:", e);
+    return { error: "An unexpected error occurred. Please try again later." };
+  }
+}
 
 export const forgotPasswordAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
