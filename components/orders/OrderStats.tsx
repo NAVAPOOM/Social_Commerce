@@ -13,24 +13,24 @@ import {
 } from 'recharts';
 
 const monthlyStats = [
-  { month: 'Jan', sales: 400, revenue: 24000 },
-  { month: 'Feb', sales: 300, revenue: 18000 },
-  { month: 'Mar', sales: 600, revenue: 36000 },
-  { month: 'Apr', sales: 800, revenue: 48000 },
-  { month: 'May', sales: 500, revenue: 30000 },
-  { month: 'Jun', sales: 700, revenue: 42000 },
+  { month: 'Jan', orders: 120, revenue: 24000 },
+  { month: 'Feb', orders: 100, revenue: 18000 },
+  { month: 'Mar', orders: 180, revenue: 36000 },
+  { month: 'Apr', orders: 240, revenue: 48000 },
+  { month: 'May', orders: 150, revenue: 30000 },
+  { month: 'Jun', orders: 210, revenue: 42000 },
 ];
 
-export default function ProductStats() {
+export default function OrderStats() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardBody className="gap-2">
           <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-            <Icon className="text-primary" icon="solar:box-minimalistic-bold" width={24} />
+            <Icon className="text-primary" icon="solar:document-text-bold" width={24} />
           </div>
           <div className="flex flex-col">
-            <span className="text-small text-default-500">Total Products</span>
+            <span className="text-small text-default-500">Total Orders</span>
             <span className="text-xl font-semibold">1,234</span>
           </div>
         </CardBody>
@@ -41,13 +41,13 @@ export default function ProductStats() {
           <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-success/10">
             <Icon
               className="text-success"
-              icon="solar:cart-check-bold"
+              icon="solar:box-minimalistic-bold"
               width={24}
             />
           </div>
           <div className="flex flex-col">
-            <span className="text-small text-default-500">Total Sales</span>
-            <span className="text-xl font-semibold">45,678</span>
+            <span className="text-small text-default-500">Completed Orders</span>
+            <span className="text-xl font-semibold">987</span>
           </div>
         </CardBody>
       </Card>
@@ -63,7 +63,7 @@ export default function ProductStats() {
           </div>
           <div className="flex flex-col">
             <span className="text-small text-default-500">Total Revenue</span>
-            <span className="text-xl font-semibold">$123,456</span>
+            <span className="text-xl font-semibold">$198,000</span>
           </div>
         </CardBody>
       </Card>
@@ -78,8 +78,8 @@ export default function ProductStats() {
             />
           </div>
           <div className="flex flex-col">
-            <span className="text-small text-default-500">Growth Rate</span>
-            <span className="text-xl font-semibold">+12.5%</span>
+            <span className="text-small text-default-500">Average Order Value</span>
+            <span className="text-xl font-semibold">$160.45</span>
           </div>
         </CardBody>
       </Card>
@@ -97,8 +97,8 @@ export default function ProductStats() {
               <Line
                 yAxisId="left"
                 type="monotone"
-                dataKey="sales"
-                name="Sales"
+                dataKey="orders"
+                name="Orders"
                 stroke="#8884d8"
                 strokeWidth={2}
               />
@@ -117,3 +117,4 @@ export default function ProductStats() {
     </div>
   );
 }
+

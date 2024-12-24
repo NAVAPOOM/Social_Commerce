@@ -107,7 +107,7 @@ export default function App() {
   }, [isCompact, page, paginate, direction, onProfileSidebarOpenChange]);
 
   return (
-      <main className="w-full">
+      <main className="h-full w-full">
         <div className="grid grid-cols-12 gap-0 overflow-y-hidden p-0 pb-2 sm:rounded-large sm:border-small sm:border-default-200">
           <MessagingChatHeader
             aria-hidden={!isMobile}

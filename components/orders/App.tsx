@@ -1,7 +1,7 @@
 'use client';
 
 import type { Selection, SortDescriptor } from '@nextui-org/react';
-import type { ColumnsKey, StatusOptions, Users } from './data';
+import type { ColumnsKey, Order } from './data';
 import type { Key } from '@react-types/shared';
 
 import {
@@ -16,7 +16,9 @@ import {
   TableRow,
   TableCell,
   Input,
+  DateRangePicker,
   Button,
+  ButtonGroup,
   RadioGroup,
   Radio,
   Chip,
@@ -30,19 +32,37 @@ import {
   PopoverContent,
   Select, 
   SelectItem,
+  Tab, Tabs
 } from '@nextui-org/react';
 import { SearchIcon } from '@nextui-org/shared-icons';
-import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useCallback, useState } from 'react';
 import { Icon } from '@iconify/react';
 import { cn } from '@nextui-org/react';
 
 import { CopyText } from './copy-text';
-import ProductStats from './ProductStats';
+import OrderStats from './OrderStats';
 
 import { useMemoizedCallback } from './use-memoized-callback';
-import { columns, INITIAL_VISIBLE_COLUMNS, users } from './data';
-import { Status } from './Status';
+import { columns, INITIAL_VISIBLE_COLUMNS, orders, statusColorMap } from './data';
 
+import {
+  today,
+  startOfWeek,
+  startOfMonth,
+  endOfWeek,
+  endOfMonth,
+  getLocalTimeZone,
+  CalendarDate,
+} from "@internationalized/date";
+import {useLocale, useDateFormatter} from "@react-aria/i18n";
+
+type ColumnType = {
+  name: string;
+  uid: string;
+  sortable?: boolean;
+  sortDirection?: 'ascending' | 'descending';
+  info?: string;
+};
 
 export default function OrdersApp() {
   const [filterValue, setFilterValue] = useState('');
@@ -53,18 +73,17 @@ export default function OrdersApp() {
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [page, setPage] = useState(1);
   const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>({
-    column: 'memberInfo',
+    column: 'customerName',
     direction: 'ascending',
   });
 
-  const [workerTypeFilter, setWorkerTypeFilter] = React.useState('all');
   const [statusFilter, setStatusFilter] = React.useState('all');
-  const [startDateFilter, setStartDateFilter] = React.useState('all');
+  const [orderDateFilter, setOrderDateFilter] = React.useState('all');
 
   const headerColumns = useMemo(() => {
-    if (visibleColumns === 'all') return columns;
+    if (visibleColumns === 'all') return columns as ColumnType[];
 
-    return columns
+    return (columns as ColumnType[])
       .map((item) => {
         if (item.uid === sortDescriptor.column) {
           return {
@@ -79,40 +98,38 @@ export default function OrdersApp() {
   }, [visibleColumns, sortDescriptor]);
 
   const itemFilter = useCallback(
-    (col: Users) => {
-      let allWorkerType = workerTypeFilter === 'all';
+    (order: Order) => {
       let allStatus = statusFilter === 'all';
-      let allStartDate = startDateFilter === 'all';
+      let allOrderDate = orderDateFilter === 'all';
 
       return (
-        (allWorkerType || workerTypeFilter === col.workerType.toLowerCase()) &&
-        (allStatus || statusFilter === col.status.toLowerCase()) &&
-        (allStartDate ||
+        (allStatus || statusFilter === order.status.toLowerCase()) &&
+        (allOrderDate ||
           new Date(
             new Date().getTime() -
-              +(startDateFilter.match(/(\d+)(?=Days)/)?.[0] ?? 0) *
+              +(orderDateFilter.match(/(\d+)(?=Days)/)?.[0] ?? 0) *
                 24 *
                 60 *
                 60 *
                 1000
-          ) <= new Date(col.startDate))
+          ) <= new Date(order.orderDate))
       );
     },
-    [startDateFilter, statusFilter, workerTypeFilter]
+    [orderDateFilter, statusFilter]
   );
 
   const filteredItems = useMemo(() => {
-    let filteredUsers = [...users];
+    let filteredOrders = [...orders];
 
     if (filterValue) {
-      filteredUsers = filteredUsers.filter((user) =>
-        user.memberInfo.name.toLowerCase().includes(filterValue.toLowerCase())
+      filteredOrders = filteredOrders.filter((order) =>
+        order.customerName.toLowerCase().includes(filterValue.toLowerCase())
       );
     }
 
-    filteredUsers = filteredUsers.filter(itemFilter);
+    filteredOrders = filteredOrders.filter(itemFilter);
 
-    return filteredUsers;
+    return filteredOrders;
   }, [filterValue, itemFilter]);
 
   const pages = Math.ceil(filteredItems.length / rowsPerPage) || 1;
@@ -125,18 +142,18 @@ export default function OrdersApp() {
   }, [page, filteredItems, rowsPerPage]);
 
   const sortedItems = useMemo(() => {
-    return [...items].sort((a: Users, b: Users) => {
-      const col = sortDescriptor.column as keyof Users;
+    return [...items].sort((a: Order, b: Order) => {
+      const col = sortDescriptor.column as keyof Order;
 
       let first = a[col];
       let second = b[col];
 
-      if (col === 'memberInfo' || col === 'country') {
-        first = a[col].name;
-        second = b[col].name;
-      } else if (sortDescriptor.column === 'externalWorkerID') {
-        first = +a.externalWorkerID.split('EXT-')[1];
-        second = +b.externalWorkerID.split('EXT-')[1];
+      if (col === 'orderDate') {
+        first = new Date(a[col]);
+        second = new Date(b[col]);
+      } else if (col === 'totalAmount') {
+        first = Number(a[col]);
+        second = Number(b[col]);
       }
 
       const cmp = first < second ? -1 : first > second ? 1 : 0;
@@ -170,35 +187,27 @@ export default function OrdersApp() {
   const { getButtonProps: getEyesProps } = useButton({ ref: eyesRef });
   const { getButtonProps: getEditProps } = useButton({ ref: editRef });
   const { getButtonProps: getDeleteProps } = useButton({ ref: deleteRef });
-  const getMemberInfoProps = useMemoizedCallback(() => ({
-    onClick: handleMemberClick,
+  const getCustomerNameProps = useMemoizedCallback(() => ({
+    onClick: handleCustomerNameClick,
   }));
 
   const renderCell = useMemoizedCallback(
-    (user: Users, columnKey: React.Key) => {
-      const userKey = columnKey as ColumnsKey;
+    (order: Order, columnKey: React.Key) => {
+      const orderKey = columnKey as ColumnsKey;
 
-      const cellValue = user[userKey as unknown as keyof Users] as string;
+      const cellValue = order[orderKey as keyof Order] as string;
 
-      switch (userKey) {
-        case 'workerID':
-        case 'externalWorkerID':
+      switch (orderKey) {
+        case 'id':
           return <CopyText>{cellValue}</CopyText>;
-        case 'memberInfo':
+        case 'customerName':
           return (
-            <User
-              avatarProps={{ radius: 'lg', src: user[userKey].avatar }}
-              classNames={{
-                name: 'text-default-foreground',
-                description: 'text-default-500',
-              }}
-              description={user[userKey].email}
-              name={user[userKey].name}
-            >
-              {user[userKey].email}
-            </User>
+            <div className="flex flex-col">
+              <p className="text-bold text-small capitalize">{cellValue}</p>
+              <p className="text-bold text-tiny capitalize text-default-400">{order.id}</p>
+            </div>
           );
-        case 'startDate':
+        case 'orderDate':
           return (
             <div className="flex items-center gap-1">
               <Icon
@@ -210,44 +219,52 @@ export default function OrdersApp() {
                   month: 'long',
                   day: 'numeric',
                   year: 'numeric',
-                }).format(cellValue as unknown as Date)}
+                }).format(new Date(cellValue))}
               </p>
             </div>
           );
-        case 'country':
+        case 'totalAmount':
           return (
-            <div className="flex items-center gap-2">
-              <div className="h-[16px] w-[16px]">{user[userKey].icon}</div>
-              <p className="text-nowrap text-small text-default-foreground">
-                {user[userKey].name}
-              </p>
+            <div className="text-nowrap text-small capitalize text-default-foreground">
+              ${cellValue}
             </div>
           );
-        case 'teams':
+        case 'status':
+          return (
+            <Chip
+              className="capitalize"
+              color={statusColorMap[order.status]}
+              size="sm"
+              variant="flat"
+            >
+              {cellValue}
+            </Chip>
+          );
+        case 'items':
           return (
             <div className="float-start flex gap-1">
-              {user[userKey].map((team, index) => {
+              {order.items.map((item, index) => {
                 if (index < 3) {
                   return (
                     <Chip
-                      key={team}
+                      key={item.id}
                       className="rounded-xl bg-default-100 px-[6px] capitalize text-default-800"
                       size="sm"
                       variant="flat"
                     >
-                      {team}
+                      {item.name}
                     </Chip>
                   );
                 }
-                if (index < 4) {
+                if (index === 3) {
                   return (
                     <Chip
-                      key={team}
+                      key={item.id}
                       className="text-default-500"
                       size="sm"
                       variant="flat"
                     >
-                      {`+${team.length - 3}`}
+                      {`+${order.items.length - 3}`}
                     </Chip>
                   );
                 }
@@ -256,16 +273,6 @@ export default function OrdersApp() {
               })}
             </div>
           );
-        case 'role':
-          return (
-            <div className="text-nowrap text-small capitalize text-default-foreground">
-              {cellValue}
-            </div>
-          );
-        case 'workerType':
-          return <div className="text-default-foreground">{cellValue}</div>;
-        case 'status':
-          return <Status status={cellValue as StatusOptions} />;
         case 'actions':
           return (
             <div className="flex items-center justify-end gap-2">
@@ -365,7 +372,7 @@ export default function OrdersApp() {
               startContent={
                 <SearchIcon className="text-default-400" width={16} />
               }
-              placeholder="Search"
+              placeholder="Search by customer name"
               size="sm"
               value={filterValue}
               onValueChange={onSearchChange}
@@ -390,31 +397,22 @@ export default function OrdersApp() {
                 <PopoverContent className="w-80">
                   <div className="flex w-full flex-col gap-6 px-2 py-4">
                     <RadioGroup
-                      label="Worker Type"
-                      value={workerTypeFilter}
-                      onValueChange={setWorkerTypeFilter}
-                    >
-                      <Radio value="all">All</Radio>
-                      <Radio value="employee">Employee</Radio>
-                      <Radio value="contractor">Contractor</Radio>
-                    </RadioGroup>
-
-                    <RadioGroup
                       label="Status"
                       value={statusFilter}
                       onValueChange={setStatusFilter}
                     >
                       <Radio value="all">All</Radio>
-                      <Radio value="active">Active</Radio>
-                      <Radio value="inactive">Inactive</Radio>
-                      <Radio value="paused">Paused</Radio>
-                      <Radio value="vacation">Vacation</Radio>
+                      <Radio value="pending">Pending</Radio>
+                      <Radio value="processing">Processing</Radio>
+                      <Radio value="shipped">Shipped</Radio>
+                      <Radio value="delivered">Delivered</Radio>
+                      <Radio value="cancelled">Cancelled</Radio>
                     </RadioGroup>
 
                     <RadioGroup
-                      label="Start Date"
-                      value={startDateFilter}
-                      onValueChange={setStartDateFilter}
+                      label="Order Date"
+                      value={orderDateFilter}
+                      onValueChange={setOrderDateFilter}
                     >
                       <Radio value="all">All</Radio>
                       <Radio value="last7Days">Last 7 days</Radio>
@@ -445,7 +443,7 @@ export default function OrdersApp() {
                 <DropdownMenu
                   aria-label="Sort"
                   items={headerColumns.filter(
-                    (c) => !['actions', 'teams'].includes(c.uid)
+                    (c) => !['actions', 'items'].includes(c.uid)
                   )}
                 >
                   {(item) => (
@@ -526,10 +524,10 @@ export default function OrdersApp() {
                 </Button>
               </DropdownTrigger>
               <DropdownMenu aria-label="Selected Actions">
-                <DropdownItem key="send-email">Send email</DropdownItem>
-                <DropdownItem key="pay-invoices">Pay invoices</DropdownItem>
+                <DropdownItem key="print-invoice">Print invoice</DropdownItem>
+                <DropdownItem key="update-status">Update status</DropdownItem>
                 <DropdownItem key="bulk-edit">Bulk edit</DropdownItem>
-                <DropdownItem key="end-contract">End contract</DropdownItem>
+                <DropdownItem key="cancel-orders">Cancel orders</DropdownItem>
               </DropdownMenu>
             </Dropdown>
           )}
@@ -565,14 +563,52 @@ export default function OrdersApp() {
     headerColumns,
     sortDescriptor,
     statusFilter,
-    workerTypeFilter,
-    startDateFilter,
-    setWorkerTypeFilter,
+    orderDateFilter,
     setStatusFilter,
-    setStartDateFilter,
+    setOrderDateFilter,
     onSearchChange,
     setVisibleColumns,
   ]);
+
+  let defaultDate = {
+    start: today(getLocalTimeZone()),
+    end: today(getLocalTimeZone()).add({days: 7}),
+  };
+  let [value, setValue] = React.useState(defaultDate);
+
+  let {locale} = useLocale();
+  let formatter = useDateFormatter({dateStyle: "full"});
+  let now = today(getLocalTimeZone());
+  let nextWeek = {
+    start: startOfWeek(now.add({weeks: 1}), locale),
+    end: endOfWeek(now.add({weeks: 1}), locale),
+  };
+  let nextMonth = {
+    start: startOfMonth(now.add({months: 1})),
+    end: endOfMonth(now.add({months: 1})),
+  };
+
+  const CustomRadio = (props: any) => {
+    const {children, ...otherProps} = props;
+
+    return (
+      <Radio
+        {...otherProps}
+        classNames={{
+          base: cn(
+            "flex-none m-0 h-8 bg-content1 hover:bg-content2 items-center justify-between",
+            "cursor-pointer rounded-full border-2 border-default-200/60",
+            "data-[selected=true]:border-primary",
+          ),
+          label: "text-tiny text-default-500",
+          labelWrapper: "px-1 m-0",
+          wrapper: "hidden",
+        }}
+      >
+        {children}
+      </Radio>
+    );
+  };
 
   const topBar = useMemo(() => {
     return (
@@ -585,43 +621,82 @@ export default function OrdersApp() {
             variant="shadow"
             color="danger"
           >
-            {users.length}
+            {orders.length}
           </Chip>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            color="success"
-            size='sm'
-            variant='flat'
-            className="flex sm:hidden"
-            isIconOnly
-            startContent={<Icon icon="solar:file-download-linear" width={20} />}
+        <div className="flex items-center gap-4">
+          <DateRangePicker
+            CalendarBottomContent={
+              <RadioGroup
+                aria-label="Date precision"
+                classNames={{
+                  base: "w-full pb-2",
+                  wrapper:
+                    "-my-2.5 py-2.5 px-3 gap-1 flex-nowrap max-w-[w-[calc(var(--visible-months)_*_var(--calendar-width))]] overflow-scroll",
+                }}
+                defaultValue="exact_dates"
+                orientation="horizontal"
+              >
+                <CustomRadio value="exact_dates">Exact dates</CustomRadio>
+                <CustomRadio value="1_day">1 day</CustomRadio>
+                <CustomRadio value="2_days">2 days</CustomRadio>
+                <CustomRadio value="3_days">3 days</CustomRadio>
+                <CustomRadio value="7_days">7 days</CustomRadio>
+                <CustomRadio value="14_days">14 days</CustomRadio>
+              </RadioGroup>
+            }
+            CalendarTopContent={
+              <ButtonGroup
+                fullWidth
+                className="px-3 pb-2 pt-3 bg-content1 [&>button]:text-default-500 [&>button]:border-default-200/60"
+                radius="full"
+                size="sm"
+                variant="bordered"
+              >
+                <Button
+                  onPress={() =>
+                    setValue({
+                      start: now,
+                      end: now.add({days: 7}),
+                    })
+                  }
+                >
+                  This week
+                </Button>
+                <Button onPress={() => setValue(nextWeek)}>Next week</Button>
+                <Button onPress={() => setValue(nextMonth)}>Next month</Button>
+              </ButtonGroup>
+            }
+            calendarProps={{
+              focusedValue: value.start,
+              onFocusChange: (val) => setValue({...value, start: val}),
+              nextButtonProps: {
+                variant: "bordered",
+              },
+              prevButtonProps: {
+                variant: "bordered",
+              },
+            }}
+            value={value}
+            onChange={(newValue) => {
+              if (newValue) {
+                setValue(newValue);
+              }
+            }}
+            color="danger"
+            size="sm"
+            hideTimeZone
+            visibleMonths={3}
+            labelPlacement="outside-left"
           />
-          <Button
-            color="success"
-            size='sm'
-            variant='flat'
-            className="hidden sm:flex"
-            startContent={<Icon icon="solar:file-download-linear" width={20} />}
-          >
-            Import File
-          </Button>
           <Button
             color="danger"
             size='sm'
             variant='flat'
-            className="flex sm:hidden"
-            isIconOnly
-            startContent={<Icon icon="hugeicons:package-add" width={20} />}
-          />
-          <Button
-            color="danger"
-            size='sm'
-            variant='flat'
-            className="hidden sm:flex"
+            className="w-full"
             startContent={<Icon icon="hugeicons:package-add" width={20} />}
           >
-            Add Product
+            Add new order
           </Button>
         </div>
       </div>
@@ -677,9 +752,9 @@ export default function OrdersApp() {
     onNextPage,
   ]);
 
-  const handleMemberClick = useMemoizedCallback(() => {
+  const handleCustomerNameClick = useMemoizedCallback(() => {
     setSortDescriptor({
-      column: 'memberInfo',
+      column: 'customerName',
       direction:
         sortDescriptor.direction === 'ascending' ? 'descending' : 'ascending',
     });
@@ -687,9 +762,9 @@ export default function OrdersApp() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="flex flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-6 overflow-auto">
         {topBar}
-        <ProductStats />
+        <OrderStats />
         <div className="relative">
           <Table
             isHeaderSticky
@@ -698,7 +773,7 @@ export default function OrdersApp() {
             bottomContent={bottomContent}
             bottomContentPlacement="outside"
             classNames={{
-              wrapper: 'max-h-[calc(100vh-250px)]',
+              //wrapper: 'max-h-[calc(100vh-250px)]',
               //td: 'before:bg-transparent',
             }}
             selectedKeys={filterSelectedKeys}
@@ -720,9 +795,9 @@ export default function OrdersApp() {
                       : '',
                   ])}
                 >
-                  {column.uid === 'memberInfo' ? (
+                  {column.uid === 'customerName' ? (
                     <div
-                      {...getMemberInfoProps()}
+                      {...getCustomerNameProps()}
                       className="flex w-full cursor-pointer items-center justify-between"
                     >
                       {column.name}
@@ -760,7 +835,7 @@ export default function OrdersApp() {
                 </TableColumn>
               )}
             </TableHeader>
-            <TableBody emptyContent={'No users found'} items={sortedItems}>
+            <TableBody emptyContent={'No orders found'} items={sortedItems}>
               {(item) => (
                 <TableRow key={item.id}>
                   {(columnKey) => (
@@ -775,3 +850,4 @@ export default function OrdersApp() {
     </div>
   );
 }
+

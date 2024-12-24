@@ -596,15 +596,6 @@ export default function Component({ onAddProduct }: AppProps) {
             color="success"
             size='sm'
             variant='flat'
-            className="flex sm:hidden"
-            isIconOnly
-            startContent={<Icon icon="solar:file-download-linear" width={20} />}
-          />
-          <Button
-            color="success"
-            size='sm'
-            variant='flat'
-            className="hidden sm:flex"
             startContent={<Icon icon="solar:file-download-linear" width={20} />}
           >
             Import File
@@ -613,15 +604,6 @@ export default function Component({ onAddProduct }: AppProps) {
             color="danger"
             size='sm'
             variant='flat'
-            className="flex sm:hidden"
-            isIconOnly
-            startContent={<Icon icon="hugeicons:package-add" width={20} />}
-          />
-          <Button
-            color="danger"
-            size='sm'
-            variant='flat'
-            className="hidden sm:flex"
             startContent={<Icon icon="hugeicons:package-add" width={20} />}
             onPress={onAddProduct}
           >
@@ -691,7 +673,7 @@ export default function Component({ onAddProduct }: AppProps) {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="flex flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-6 overflow-auto">
         {topBar}
         <ProductStats />
         <div className="relative">
@@ -702,7 +684,7 @@ export default function Component({ onAddProduct }: AppProps) {
             bottomContent={bottomContent}
             bottomContentPlacement="outside"
             classNames={{
-              wrapper: 'max-h-[calc(100vh-250px)]',
+              //wrapper: 'max-h-[calc(100vh-250px)]',
               //td: 'before:bg-transparent',
             }}
             selectedKeys={filterSelectedKeys}

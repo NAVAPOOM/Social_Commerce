@@ -1,5 +1,3 @@
-'use client';
-
 import React from 'react';
 import { Card, CardBody } from '@nextui-org/react';
 import { Icon } from '@iconify/react';
@@ -11,12 +9,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from 'recharts';
-import { Member } from './data';
-
-interface MemberStatsProps {
-  members: Member[];
-}
 
 const monthlyData = [
   { month: 'Jan', newMembers: 12, activeMembers: 45 },
@@ -27,21 +21,7 @@ const monthlyData = [
   { month: 'Jun', newMembers: 25, activeMembers: 85 },
 ];
 
-export default function MemberStats({ members }: MemberStatsProps) {
-  const stats = React.useMemo(() => {
-    const activeMembers = members.filter((m) => m.status === 'active');
-    const totalSpent = members.reduce((sum, m) => sum + m.stats.totalSpent, 0);
-    const totalOrders = members.reduce((sum, m) => sum + m.stats.totalOrders, 0);
-    const avgOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
-
-    return {
-      totalMembers: members.length,
-      activeMembers: activeMembers.length,
-      totalSpent,
-      avgOrderValue,
-    };
-  }, [members]);
-
+export default function MemberStats() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <Card>
@@ -51,7 +31,7 @@ export default function MemberStats({ members }: MemberStatsProps) {
           </div>
           <div className="flex flex-col">
             <span className="text-small text-default-500">Total Members</span>
-            <span className="text-xl font-semibold">{stats.totalMembers}</span>
+            <span className="text-xl font-semibold">100</span>
           </div>
         </CardBody>
       </Card>
@@ -67,7 +47,7 @@ export default function MemberStats({ members }: MemberStatsProps) {
           </div>
           <div className="flex flex-col">
             <span className="text-small text-default-500">Active Members</span>
-            <span className="text-xl font-semibold">{stats.activeMembers}</span>
+            <span className="text-xl font-semibold">43</span>
           </div>
         </CardBody>
       </Card>
@@ -83,9 +63,7 @@ export default function MemberStats({ members }: MemberStatsProps) {
           </div>
           <div className="flex flex-col">
             <span className="text-small text-default-500">Total Spent</span>
-            <span className="text-xl font-semibold">
-              ${stats.totalSpent.toLocaleString()}
-            </span>
+            <span className="text-xl font-semibold">$123,456</span>
           </div>
         </CardBody>
       </Card>
@@ -101,39 +79,37 @@ export default function MemberStats({ members }: MemberStatsProps) {
           </div>
           <div className="flex flex-col">
             <span className="text-small text-default-500">Avg. Order Value</span>
-            <span className="text-xl font-semibold">
-              ${stats.avgOrderValue.toFixed(2)}
-            </span>
+            <span className="text-xl font-semibold">+12.5%</span>
           </div>
         </CardBody>
       </Card>
 
-      <Card className="col-span-full">
+      <Card className="col-span-full h-[300px]">
         <CardBody>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="newMembers"
-                  name="New Members"
-                  stroke="#8884d8"
-                  strokeWidth={2}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="activeMembers"
-                  name="Active Members"
-                  stroke="#82ca9d"
-                  strokeWidth={2}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={monthlyData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis/>
+              
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="newMembers"
+                name="New Members"
+                stroke="#8884d8"
+                strokeWidth={2}
+              />
+              <Line
+                type="monotone"
+                dataKey="activeMembers"
+                name="Active Members"
+                stroke="#82ca9d"
+                strokeWidth={2}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </CardBody>
       </Card>
     </div>

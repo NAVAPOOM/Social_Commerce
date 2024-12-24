@@ -1,209 +1,758 @@
 'use client';
 
-import React from 'react';
+import type { Selection, SortDescriptor } from '@nextui-org/react';
+import type { ColumnsKey, StatusOptions, Users } from './data';
+import type { Key } from '@react-types/shared';
+
 import {
-  Button,
-  useDisclosure,
-  Input,
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-  Select,
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+  Input,
+  Button,
+  RadioGroup,
+  Radio,
+  Chip,
+  User,
+  Pagination,
+  Divider,
+  Tooltip,
+  useButton,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  Select, 
   SelectItem,
 } from '@nextui-org/react';
+import { SearchIcon } from '@nextui-org/shared-icons';
+import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
-import AddMemberModal from './AddMemberModal';
-import EditMemberPanel from './EditMemberPanel';
+import { cn } from '@nextui-org/react';
+
+import { CopyText } from './copy-text';
 import MemberStats from './MemberStats';
-import MemberTable from './MemberTable';
-import { memberData } from './data';
 
-const memberRoles = [
-  { label: 'All Roles', value: 'all' },
-  { label: 'Admin', value: 'admin' },
-  { label: 'Staff', value: 'staff' },
-  { label: 'Customer', value: 'customer' },
-];
+import { useMemoizedCallback } from './use-memoized-callback';
+import { columns, INITIAL_VISIBLE_COLUMNS, users } from './data';
+import { Status } from './Status';
 
-const memberStatuses = [
-  { label: 'All Statuses', value: 'all' },
-  { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
-  { label: 'Suspended', value: 'suspended' },
-];
+export default function Component() {
+  const [filterValue, setFilterValue] = useState('');
+  const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set([]));
+  const [visibleColumns, setVisibleColumns] = useState<Selection>(
+    new Set(INITIAL_VISIBLE_COLUMNS)
+  );
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+  const [page, setPage] = useState(1);
+  const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>({
+    column: 'memberInfo',
+    direction: 'ascending',
+  });
 
-export default function StoreMembersApp() {
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [selectedMember, setSelectedMember] = React.useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [roleFilter, setRoleFilter] = React.useState('all');
+  const [workerTypeFilter, setWorkerTypeFilter] = React.useState('all');
   const [statusFilter, setStatusFilter] = React.useState('all');
-  const [sortBy, setSortBy] = React.useState<string>('name');
+  const [startDateFilter, setStartDateFilter] = React.useState('all');
 
-  const handleEditMember = (memberId: string) => {
-    setSelectedMember(memberId);
-  };
+  const headerColumns = useMemo(() => {
+    if (visibleColumns === 'all') return columns;
 
-  const handleCloseEdit = () => {
-    setSelectedMember(null);
-  };
+    return columns
+      .map((item) => {
+        if (item.uid === sortDescriptor.column) {
+          return {
+            ...item,
+            sortDirection: sortDescriptor.direction,
+          };
+        }
 
-  const filteredMembers = React.useMemo(() => {
-    let filtered = memberData;
+        return item;
+      })
+      .filter((column) => Array.from(visibleColumns).includes(column.uid));
+  }, [visibleColumns, sortDescriptor]);
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        member =>
-          member.firstName.toLowerCase().includes(query) ||
-          member.lastName.toLowerCase().includes(query) ||
-          member.email.toLowerCase().includes(query) ||
-          member.phone.includes(query)
+  const itemFilter = useCallback(
+    (col: Users) => {
+      let allWorkerType = workerTypeFilter === 'all';
+      let allStatus = statusFilter === 'all';
+      let allStartDate = startDateFilter === 'all';
+
+      return (
+        (allWorkerType || workerTypeFilter === col.workerType.toLowerCase()) &&
+        (allStatus || statusFilter === col.status.toLowerCase()) &&
+        (allStartDate ||
+          new Date(
+            new Date().getTime() -
+              +(startDateFilter.match(/(\d+)(?=Days)/)?.[0] ?? 0) *
+                24 *
+                60 *
+                60 *
+                1000
+          ) <= new Date(col.startDate))
+      );
+    },
+    [startDateFilter, statusFilter, workerTypeFilter]
+  );
+
+  const filteredItems = useMemo(() => {
+    let filteredUsers = [...users];
+
+    if (filterValue) {
+      filteredUsers = filteredUsers.filter((user) =>
+        user.memberInfo.name.toLowerCase().includes(filterValue.toLowerCase())
       );
     }
 
-    if (roleFilter !== 'all') {
-      filtered = filtered.filter(member => member.role === roleFilter);
-    }
+    filteredUsers = filteredUsers.filter(itemFilter);
 
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(member => member.status === statusFilter);
-    }
+    return filteredUsers;
+  }, [filterValue, itemFilter]);
 
-    return [...filtered].sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
-        case 'joinDate':
-          return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
-        case 'orders':
-          return b.stats.totalOrders - a.stats.totalOrders;
-        case 'spent':
-          return b.stats.totalSpent - a.stats.totalSpent;
-        default:
-          return 0;
+  const pages = Math.ceil(filteredItems.length / rowsPerPage) || 1;
+
+  const items = useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+
+    return filteredItems.slice(start, end);
+  }, [page, filteredItems, rowsPerPage]);
+
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a: Users, b: Users) => {
+      const col = sortDescriptor.column as keyof Users;
+
+      let first = a[col];
+      let second = b[col];
+
+      if (col === 'memberInfo' || col === 'country') {
+        first = a[col].name;
+        second = b[col].name;
+      } else if (sortDescriptor.column === 'externalWorkerID') {
+        first = +a.externalWorkerID.split('EXT-')[1];
+        second = +b.externalWorkerID.split('EXT-')[1];
       }
+
+      const cmp = first < second ? -1 : first > second ? 1 : 0;
+
+      return sortDescriptor.direction === 'descending' ? -cmp : cmp;
     });
-  }, [searchQuery, roleFilter, statusFilter, sortBy]);
+  }, [sortDescriptor, items]);
+
+  const filterSelectedKeys = useMemo(() => {
+    if (selectedKeys === 'all') return selectedKeys;
+    let resultKeys = new Set<Key>();
+
+    if (filterValue) {
+      filteredItems.forEach((item) => {
+        const stringId = String(item.id);
+
+        if ((selectedKeys as Set<string>).has(stringId)) {
+          resultKeys.add(stringId);
+        }
+      });
+    } else {
+      resultKeys = selectedKeys;
+    }
+
+    return resultKeys;
+  }, [selectedKeys, filteredItems, filterValue]);
+
+  const eyesRef = useRef<HTMLButtonElement | null>(null);
+  const editRef = useRef<HTMLButtonElement | null>(null);
+  const deleteRef = useRef<HTMLButtonElement | null>(null);
+  const { getButtonProps: getEyesProps } = useButton({ ref: eyesRef });
+  const { getButtonProps: getEditProps } = useButton({ ref: editRef });
+  const { getButtonProps: getDeleteProps } = useButton({ ref: deleteRef });
+  const getMemberInfoProps = useMemoizedCallback(() => ({
+    onClick: handleMemberClick,
+  }));
+
+  const renderCell = useMemoizedCallback(
+    (user: Users, columnKey: React.Key) => {
+      const userKey = columnKey as ColumnsKey;
+
+      const cellValue = user[userKey as unknown as keyof Users] as string;
+
+      switch (userKey) {
+        case 'workerID':
+        case 'externalWorkerID':
+          return <CopyText>{cellValue}</CopyText>;
+        case 'memberInfo':
+          return (
+            <User
+              avatarProps={{ radius: 'lg', src: user[userKey].avatar }}
+              classNames={{
+                name: 'text-default-foreground',
+                description: 'text-default-500',
+              }}
+              description={user[userKey].email}
+              name={user[userKey].name}
+            >
+              {user[userKey].email}
+            </User>
+          );
+        case 'startDate':
+          return (
+            <div className="flex items-center gap-1">
+              <Icon
+                className="h-[16px] w-[16px] text-default-300"
+                icon="solar:calendar-minimalistic-linear"
+              />
+              <p className="text-nowrap text-small capitalize text-default-foreground">
+                {new Intl.DateTimeFormat('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                }).format(cellValue as unknown as Date)}
+              </p>
+            </div>
+          );
+        case 'country':
+          return (
+            <div className="flex items-center gap-2">
+              <div className="h-[16px] w-[16px]">{user[userKey].icon}</div>
+              <p className="text-nowrap text-small text-default-foreground">
+                {user[userKey].name}
+              </p>
+            </div>
+          );
+        case 'teams':
+          return (
+            <div className="float-start flex gap-1">
+              {user[userKey].map((team, index) => {
+                if (index < 3) {
+                  return (
+                    <Chip
+                      key={team}
+                      className="rounded-xl bg-default-100 px-[6px] capitalize text-default-800"
+                      size="sm"
+                      variant="flat"
+                    >
+                      {team}
+                    </Chip>
+                  );
+                }
+                if (index < 4) {
+                  return (
+                    <Chip
+                      key={team}
+                      className="text-default-500"
+                      size="sm"
+                      variant="flat"
+                    >
+                      {`+${team.length - 3}`}
+                    </Chip>
+                  );
+                }
+
+                return null;
+              })}
+            </div>
+          );
+        case 'role':
+          return (
+            <div className="text-nowrap text-small capitalize text-default-foreground">
+              {cellValue}
+            </div>
+          );
+        case 'workerType':
+          return <div className="text-default-foreground">{cellValue}</div>;
+        case 'status':
+          return <Status status={cellValue as StatusOptions} />;
+        case 'actions':
+          return (
+            <div className="flex items-center justify-end gap-2">
+              <Icon
+                icon="solar:eye-linear"
+                className="cursor-pointer text-default-400"
+                height={18}
+                width={18}
+              />
+              <Icon
+                icon="solar:pen-2-linear"
+                className="cursor-pointer text-default-400"
+                height={18}
+                width={18}
+              />
+              <Icon
+                icon="solar:trash-bin-minimalistic-linear"
+                className="cursor-pointer text-default-400"
+                height={18}
+                width={18}
+              />
+            </div>
+          );
+        default:
+          return cellValue;
+      }
+    }
+  );
+
+  const onNextPage = useMemoizedCallback(() => {
+    if (page < pages) {
+      setPage(page + 1);
+    }
+  });
+
+  const onPreviousPage = useMemoizedCallback(() => {
+    if (page > 1) {
+      setPage(page - 1);
+    }
+  });
+
+  const onSearchChange = useMemoizedCallback((value?: string) => {
+    if (value) {
+      setFilterValue(value);
+      setPage(1);
+    } else {
+      setFilterValue('');
+    }
+  });
+
+  const onRowsPerPageChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setRowsPerPage(Number(e.target.value))
+    setPage(1)
+  }, [])
+
+  const onSelectionChange = useMemoizedCallback((keys: Selection) => {
+    if (keys === 'all') {
+      if (filterValue) {
+        const resultKeys = new Set(
+          filteredItems.map((item) => String(item.id))
+        );
+
+        setSelectedKeys(resultKeys);
+      } else {
+        setSelectedKeys(keys);
+      }
+    } else if (keys.size === 0) {
+      setSelectedKeys(new Set());
+    } else {
+      const resultKeys = new Set<Key>();
+
+      keys.forEach((v) => {
+        resultKeys.add(v);
+      });
+      const selectedValue =
+        selectedKeys === 'all'
+          ? new Set(filteredItems.map((item) => String(item.id)))
+          : selectedKeys;
+
+      selectedValue.forEach((v) => {
+        if (items.some((item) => String(item.id) === v)) {
+          return;
+        }
+        resultKeys.add(v);
+      });
+      setSelectedKeys(new Set(resultKeys));
+    }
+  });
+
+  const topContent = useMemo(() => {
+    return (
+      <div className="flex items-center gap-4 overflow-auto px-[6px] py-[4px]">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <Input
+              className="min-w-[200px]"
+              startContent={
+                <SearchIcon className="text-default-400" width={16} />
+              }
+              placeholder="Search"
+              size="sm"
+              value={filterValue}
+              onValueChange={onSearchChange}
+            />
+            <div>
+              <Popover placement="bottom">
+                <PopoverTrigger>
+                  <Button
+                    className="bg-default-100 text-default-800"
+                    size="sm"
+                    startContent={
+                      <Icon
+                        className="text-default-400"
+                        icon="solar:tuning-2-linear"
+                        width={16}
+                      />
+                    }
+                  >
+                    Filter
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80">
+                  <div className="flex w-full flex-col gap-6 px-2 py-4">
+                    <RadioGroup
+                      label="Worker Type"
+                      value={workerTypeFilter}
+                      onValueChange={setWorkerTypeFilter}
+                    >
+                      <Radio value="all">All</Radio>
+                      <Radio value="employee">Employee</Radio>
+                      <Radio value="contractor">Contractor</Radio>
+                    </RadioGroup>
+
+                    <RadioGroup
+                      label="Status"
+                      value={statusFilter}
+                      onValueChange={setStatusFilter}
+                    >
+                      <Radio value="all">All</Radio>
+                      <Radio value="active">Active</Radio>
+                      <Radio value="inactive">Inactive</Radio>
+                      <Radio value="paused">Paused</Radio>
+                      <Radio value="vacation">Vacation</Radio>
+                    </RadioGroup>
+
+                    <RadioGroup
+                      label="Start Date"
+                      value={startDateFilter}
+                      onValueChange={setStartDateFilter}
+                    >
+                      <Radio value="all">All</Radio>
+                      <Radio value="last7Days">Last 7 days</Radio>
+                      <Radio value="last30Days">Last 30 days</Radio>
+                      <Radio value="last60Days">Last 60 days</Radio>
+                    </RadioGroup>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <Dropdown>
+                <DropdownTrigger>
+                  <Button
+                    className="bg-default-100 text-default-800"
+                    size="sm"
+                    startContent={
+                      <Icon
+                        className="text-default-400"
+                        icon="solar:sort-linear"
+                        width={16}
+                      />
+                    }
+                  >
+                    Sort
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu
+                  aria-label="Sort"
+                  items={headerColumns.filter(
+                    (c) => !['actions', 'teams'].includes(c.uid)
+                  )}
+                >
+                  {(item) => (
+                    <DropdownItem
+                      key={item.uid}
+                      onPress={() => {
+                        setSortDescriptor({
+                          column: item.uid,
+                          direction:
+                            sortDescriptor.direction === 'ascending'
+                              ? 'descending'
+                              : 'ascending',
+                        });
+                      }}
+                    >
+                      {item.name}
+                    </DropdownItem>
+                  )}
+                </DropdownMenu>
+              </Dropdown>
+            </div>
+            <div>
+              <Dropdown closeOnSelect={false}>
+                <DropdownTrigger>
+                  <Button
+                    className="bg-default-100 text-default-800"
+                    size="sm"
+                    startContent={
+                      <Icon
+                        className="text-default-400"
+                        icon="solar:sort-horizontal-linear"
+                        width={16}
+                      />
+                    }
+                  >
+                    Columns
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu
+                  disallowEmptySelection
+                  aria-label="Columns"
+                  items={columns.filter((c) => !['actions'].includes(c.uid))}
+                  selectedKeys={visibleColumns}
+                  selectionMode="multiple"
+                  onSelectionChange={setVisibleColumns}
+                >
+                  {(item) => (
+                    <DropdownItem key={item.uid}>{item.name}</DropdownItem>
+                  )}
+                </DropdownMenu>
+              </Dropdown>
+            </div>
+          </div>
+
+          <Divider className="h-5" orientation="vertical" />
+
+          <div className="whitespace-nowrap text-sm text-default-800">
+            {filterSelectedKeys === 'all'
+              ? 'All items selected'
+              : `${filterSelectedKeys.size} Selected`}
+          </div>
+
+          {(filterSelectedKeys === 'all' || filterSelectedKeys.size > 0) && (
+            <Dropdown>
+              <DropdownTrigger>
+                <Button
+                  className="bg-default-100 text-default-800"
+                  endContent={
+                    <Icon
+                      className="text-default-400"
+                      icon="solar:alt-arrow-down-linear"
+                    />
+                  }
+                  size="sm"
+                  variant="flat"
+                >
+                  Selected Actions
+                </Button>
+              </DropdownTrigger>
+              <DropdownMenu aria-label="Selected Actions">
+                <DropdownItem key="send-email">Send email</DropdownItem>
+                <DropdownItem key="pay-invoices">Pay invoices</DropdownItem>
+                <DropdownItem key="bulk-edit">Bulk edit</DropdownItem>
+                <DropdownItem key="end-contract">End contract</DropdownItem>
+              </DropdownMenu>
+            </Dropdown>
+          )}
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <label className="text-small text-default-400 whitespace-nowrap">
+            Rows per page:
+          </label>
+          <Select 
+            aria-label="Rows per page"
+            className="w-[70px] min-w-max"
+            size="sm"
+            defaultSelectedKeys={["10"]}
+            onChange={onRowsPerPageChange}
+          >
+            <SelectItem key="5" value="5">
+              5
+            </SelectItem>
+            <SelectItem key="10" value="10">
+              10
+            </SelectItem>
+            <SelectItem key="15" value="15">
+              15
+            </SelectItem>
+          </Select>
+        </div>
+      </div>
+    );
+  }, [
+    filterValue,
+    visibleColumns,
+    filterSelectedKeys,
+    headerColumns,
+    sortDescriptor,
+    statusFilter,
+    workerTypeFilter,
+    startDateFilter,
+    setWorkerTypeFilter,
+    setStatusFilter,
+    setStartDateFilter,
+    onSearchChange,
+    setVisibleColumns,
+  ]);
+
+  const topBar = useMemo(() => {
+    return (
+      <div className="mb-[18px] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-[700] leading-[32px]">Store Members</h1>
+          <Chip
+            className="hidden items-center sm:flex"
+            size="sm"
+            variant="shadow"
+            color="danger"
+          >
+            {users.length}
+          </Chip>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            color="success"
+            size='sm'
+            variant='flat'
+            startContent={<Icon icon="solar:file-download-linear" width={20} />}
+          >
+            Export File
+          </Button>
+          <Button
+            color="danger"
+            size='sm'
+            variant='flat'
+            startContent={<Icon icon="hugeicons:package-add" width={20} />}
+          >
+            Add Member
+          </Button>
+        </div>
+      </div>
+    );
+  }, []);
+
+  const bottomContent = useMemo(() => {
+    const start = (page - 1) * rowsPerPage + 1;
+    const end = Math.min(start + rowsPerPage - 1, filteredItems.length);
+
+    return (
+      <div className="flex flex-col items-center justify-between gap-2 px-2 py-2 sm:flex-row">
+        <Pagination
+          isCompact
+          showControls
+          showShadow
+          color="primary"
+          page={page}
+          total={pages}
+          onChange={setPage}
+        />
+        <div className="flex items-center justify-end gap-6">
+          <span className="text-small text-default-400">
+            {`${start}-${end} of ${filteredItems.length}`}
+          </span>
+          <div className="flex items-center gap-3">
+            <Button
+              isDisabled={page === 1}
+              size="sm"
+              variant="flat"
+              onPress={onPreviousPage}
+            >
+              Previous
+            </Button>
+            <Button
+              isDisabled={page === pages}
+              size="sm"
+              variant="flat"
+              onPress={onNextPage}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [
+    filterSelectedKeys,
+    page,
+    pages,
+    filteredItems.length,
+    onPreviousPage,
+    onNextPage,
+  ]);
+
+  const handleMemberClick = useMemoizedCallback(() => {
+    setSortDescriptor({
+      column: 'memberInfo',
+      direction:
+        sortDescriptor.direction === 'ascending' ? 'descending' : 'ascending',
+    });
+  });
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Fixed Header */}
-      <div className="border-b border-divider bg-background/80 px-6 py-4 backdrop-blur-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Store Members</h1>
-            <p className="text-small text-default-500">
-              Manage your store members and their permissions
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              color="primary"
-              variant="flat"
-              startContent={<Icon icon="solar:file-download-linear" width={20} />}
-            >
-              Export
-            </Button>
-            <Button
-              color="primary"
-              endContent={<Icon icon="solar:user-plus-rounded-linear" width={20} />}
-              onPress={onOpen}
-            >
-              Add Member
-            </Button>
-          </div>
+    <div className="flex h-full w-full flex-col">
+      <div className="flex flex-col gap-4 p-6 overflow-auto">
+        {topBar}
+        <MemberStats />
+        <div className="relative">
+          <Table
+            isHeaderSticky
+            color='danger'
+            aria-label="Example table with custom cells, pagination and sorting"
+            bottomContent={bottomContent}
+            bottomContentPlacement="outside"
+            classNames={{
+              //wrapper: 'max-h-[calc(100vh-250px)]',
+              //td: 'before:bg-transparent',
+            }}
+            selectedKeys={filterSelectedKeys}
+            selectionMode="multiple"
+            sortDescriptor={sortDescriptor}
+            topContent={topContent}
+            topContentPlacement="outside"
+            onSelectionChange={onSelectionChange}
+            onSortChange={setSortDescriptor}
+          >
+            <TableHeader columns={headerColumns}>
+              {(column) => (
+                <TableColumn
+                  key={column.uid}
+                  align={column.uid === 'actions' ? 'end' : 'start'}
+                  className={cn([
+                    column.uid === 'actions'
+                      ? 'flex items-center justify-end px-[20px]'
+                      : '',
+                  ])}
+                >
+                  {column.uid === 'memberInfo' ? (
+                    <div
+                      {...getMemberInfoProps()}
+                      className="flex w-full cursor-pointer items-center justify-between"
+                    >
+                      {column.name}
+                      {column.sortDirection === 'ascending' ? (
+                        <Icon
+                          icon="solar:alt-arrow-up-linear"
+                          className="text-default-400"
+                          height={16}
+                          width={16}
+                        />
+                      ) : (
+                        <Icon
+                          icon="solar:alt-arrow-down-linear"
+                          className="text-default-400"
+                          height={16}
+                          width={16}
+                        />
+                      )}
+                    </div>
+                  ) : column.info ? (
+                    <div className="flex min-w-[108px] items-center justify-between">
+                      {column.name}
+                      <Tooltip content={column.info}>
+                        <Icon
+                          className="text-default-300"
+                          height={16}
+                          icon="solar:info-circle-linear"
+                          width={16}
+                        />
+                      </Tooltip>
+                    </div>
+                  ) : (
+                    column.name
+                  )}
+                </TableColumn>
+              )}
+            </TableHeader>
+            <TableBody emptyContent={'No users found'} items={sortedItems}>
+              {(item) => (
+                <TableRow key={item.id}>
+                  {(columnKey) => (
+                    <TableCell>{renderCell(item, columnKey)}</TableCell>
+                  )}
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </div>
       </div>
-
-      {/* Sticky Controls */}
-      <div className="sticky top-0 z-10 border-b border-divider bg-background/80 px-6 py-4 backdrop-blur-lg">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 gap-2">
-            <Input
-              className="max-w-xs"
-              placeholder="Search members..."
-              startContent={
-                <Icon
-                  className="text-default-400"
-                  icon="solar:magnifer-linear"
-                  width={16}
-                />
-              }
-              value={searchQuery}
-              onValueChange={setSearchQuery}
-            />
-            <Select
-              className="max-w-xs"
-              placeholder="Role"
-              selectedKeys={[roleFilter]}
-              size="sm"
-              variant="bordered"
-              onSelectionChange={(keys) => setRoleFilter(Array.from(keys)[0] as string)}
-            >
-              {memberRoles.map((role) => (
-                <SelectItem key={role.value} value={role.value}>
-                  {role.label}
-                </SelectItem>
-              ))}
-            </Select>
-            <Select
-              className="max-w-xs"
-              placeholder="Status"
-              selectedKeys={[statusFilter]}
-              size="sm"
-              variant="bordered"
-              onSelectionChange={(keys) => setStatusFilter(Array.from(keys)[0] as string)}
-            >
-              {memberStatuses.map((status) => (
-                <SelectItem key={status.value} value={status.value}>
-                  {status.label}
-                </SelectItem>
-              ))}
-            </Select>
-          </div>
-
-          <Dropdown>
-            <DropdownTrigger>
-              <Button
-                endContent={<Icon icon="solar:alt-arrow-down-linear" width={16} />}
-                variant="flat"
-              >
-                Sort
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              aria-label="Sort members"
-              selectedKeys={[sortBy]}
-              selectionMode="single"
-              onSelectionChange={(keys) => setSortBy(Array.from(keys)[0] as string)}
-            >
-              <DropdownItem key="name">Name</DropdownItem>
-              <DropdownItem key="joinDate">Join Date</DropdownItem>
-              <DropdownItem key="orders">Total Orders</DropdownItem>
-              <DropdownItem key="spent">Total Spent</DropdownItem>
-            </DropdownMenu>
-          </Dropdown>
-        </div>
-      </div>
-
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="space-y-6 p-6">
-          <MemberStats members={filteredMembers} />
-          <MemberTable
-            members={filteredMembers}
-            onEdit={handleEditMember}
-          />
-        </div>
-      </div>
-
-      <AddMemberModal isOpen={isOpen} onClose={onClose} />
-      <EditMemberPanel
-        memberId={selectedMember}
-        onClose={handleCloseEdit}
-      />
     </div>
   );
 }
